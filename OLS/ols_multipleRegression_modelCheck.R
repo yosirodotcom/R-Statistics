@@ -8,7 +8,8 @@ model <- lm(Sepal.Length ~ ., iris)
 summary(model) # Lihat F p-value
 broom::glance(model)
 
-resettest(model) # RESET TEST
+resettest(model) # RESET TEST need p-value > 0.05
+#If the null-hypothesis is rejected, then the model suffers from misspecification.
 
 options(na.action ="na.fail")
 dredge(global.model = lm(Sepal.Length ~ ., 
@@ -22,3 +23,6 @@ sctest(Sepal.Length ~ .,  # Chow Test: need p-value > 0.05
        data=iris, 
        type = "Chow", 
        point = 10)
+#If we reject the null hypothesis, we have sufficient evidence to say that there is a structural break point in the data and two regression lines can fit the data better than one.
+
+#If we fail to reject the null hypothesis, we do not have sufficient evidence to say that there is a structural break point in the data.
