@@ -1,0 +1,167 @@
+---
+title: "Maximum Likelihood Example OLS"
+output: html_notebook
+---
+
+Quick overview of MLE:
+
+-   You have an independent and identically distributed sample of data:
+$$
+    y_1,y_2,...,y_N
+$$
+
+-   You are willing to assume that the data is generated from some parametric density function. In particular, let the data be generated from a known density function (or probability mass function): 
+$$
+y_i \sim f(y|\theta)
+$$
+- Exploiting the fact that the data are iid, you can construct a likelihood function:
+
+$$
+L(\theta) = \prod^{N}_{i=1}f(y_i|\theta)\\
+\log(L(\theta)) = \sum^{N}_{i=1} \log f(y_i |\theta)
+$$
+-   There may be an infinite number of possible parameter values, and you want to choose the one that "fits" the data the best. To do so, we just need to maximize the above. 
+
+- Some issues:
+    - Misspecification: Suppose you assume the **wrong** density or pmf function.
+    - Identification: Suppose that a unique maximizer doesn't actually exist. 
+    
+
+## Example using least squares
+
+$$
+Y_i = \beta X_i+ U_i \\
+U_i = Y_i - \beta X_i \\
+U_i \sim N(0, \sigma^2) \\
+Y_i \sim N(\beta X_i, \sigma^2)
+$$
+Density function is given by:
+$$
+f(Y_i|\sigma^2,\beta) \sim \frac{1}{\sqrt{2\pi\sigma^2}}\exp\Big(-\frac{Y_i -\beta X_i}{2\sigma^2}\Big)
+$$
+## Likelihood function
+
+$$
+L(\sigma^2, \beta) = \prod^{N}_{i=1}f(Y_i|\sigma^2, \beta) = \prod^{N}_{i=1} \frac{1}{\sqrt{2\pi\sigma^2}}\exp\Big(-\frac{Y_i -\beta X_i}{2\sigma^2}\Big) \\
+
+\log L(\sigma^2, \beta)=\sum^{n}_{i=1} -\frac{n}{2}\log(2\pi)-\frac{n}{2}\log(\sigma^2) -\frac{1}{2\sigma^2}(Y_i - \beta X_i)^2
+$$
+
+```{r load-packages}
+library(pacman)
+p_load(data.table, fixest, lattice, magrittr, ggplot2, kableExtra)
+```
+
+# Step 1: Generate the data 
+
+```{r step-1}
+N = 500      # Sample size
+beta = 5     # Beta  
+sigma_2 = 5  # sigma^2 (Distribution of U)
+DT <- data.table(X = rnorm(N, 0, 5),
+                 U = rnorm(N, 0, sqrt(sigma_2))) %>%
+    .[, Y := beta*X + U]
+
+```
+
+
+# Step 2: Derive the likelihood function
+
+```{r step-2}
+
+# Likelihood function
+log_like <- function(theta, Y, X){
+  X <- as.matrix(X); Y <- as.matrix(Y);
+  N       <- nrow(X)
+  beta    <- theta[1]
+  sigma_2 <- theta[2]
+  e       <- Y - beta*X
+  loglik  <- -.5*N*log(2*pi)-.5*N*log(sigma_2) - ( (t(e) %*% e)/ (2*sigma_2) )
+  return(-loglik)
+}
+
+
+# Graph the likelihood function
+
+log_like_graph <- function(beta, sigma_2){
+  X <- as.matrix(DT$X); Y <- as.matrix(DT$Y);
+  N       <- nrow(X)
+  e       <- Y - beta*X
+  loglik  <- -.5*N*log(2*pi)-.5*N*log(sigma_2) - ( (t(e) %*% e)/ (2*sigma_2) )
+  return(loglik)
+}
+log_like_graph <- Vectorize(log_like_graph)
+
+# Set grid of beta and sigma2 values 
+beta_vals <- seq(-10,10, by =1)
+sigma2_vals <- seq(1,10, by =1)
+log_vals <- outer(beta_vals, sigma2_vals, log_like_graph)
+
+persp(beta_vals, sigma2_vals, log_vals, theta = 7, phi =8 , r= 500)
+
+
+```
+
+# Step 3: Find MLE estimates
+
+```{r step-3}
+MLE_estimates <- optim(fn=log_like,                   # Likelihood function
+                       par=c(1,1),                    # Initial guess
+                       lower = c(-Inf, -Inf),         # Lower bound on parameters
+                       upper = c(Inf, Inf),           # Upper bound on parameters
+                       hessian=TRUE,                  # Return Hessian for SEs
+                       method = "L-BFGS-B",
+                       # Custom Inputs
+                       Y = DT$Y,                     
+                       X = DT$X)
+
+# Examine estimates
+MLE_par <- MLE_estimates$par
+MLE_SE <- sqrt(diag(solve(MLE_estimates$hessian)))
+MLE <- data.table(param = c("beta", "sigma_2"),
+                  estimates = MLE_par,
+                  sd = MLE_SE)
+
+kable(MLE)
+```
+
+# Step 4: Graph Estimates
+
+```{r step-4}
+
+log_like_graph_beta <- function(beta){
+  sigma_2 = MLE_par[2]
+  X = as.matrix(DT$X)
+  Y = as.matrix(DT$Y)
+  N = nrow(X)
+  e = Y - beta*X
+  loglik  <- -.5*N*log(2*pi)-.5*N*log(sigma_2) - ( (t(e) %*% e)/ (2*sigma_2) )
+  return(loglik) 
+}
+
+log_like_graph_sigma2 <- function(sigma_2){
+  beta = MLE_par[1]
+  X = as.matrix(DT$X)
+  Y = as.matrix(DT$Y)
+  N = nrow(X)
+  e = Y - beta*X
+  loglik  <- -.5*N*log(2*pi)-.5*N*log(sigma_2) - ( (t(e) %*% e)/ (2*sigma_2) )
+  return(loglik) 
+}
+
+# Vectorize 
+log_like_graph_beta <- Vectorize(log_like_graph_beta)
+log_like_graph_sigma2 <- Vectorize(log_like_graph_sigma2)
+
+# Grph 
+beta <- ggplot(data = data.frame(beta = 0), mapping = aes(beta = beta)) + 
+    stat_function(fun = log_like_graph_beta) +
+    xlim(-40,40) + theme_bw() +xlab("beta") + ylab("log lik")
+
+sigma2 <- ggplot(data = data.frame(sigma2 = 0), mapping = aes(sigma2 = sigma2)) + 
+    stat_function(fun = log_like_graph_sigma2) +
+    xlim(1,20) + theme_bw() +xlab("sigma2") + ylab("log lik")
+
+beta
+sigma2
+```
