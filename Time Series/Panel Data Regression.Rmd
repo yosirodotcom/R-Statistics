@@ -1,0 +1,92 @@
+---
+title: "Panel Data Regression"
+author: "yosiro.com"
+date: "29/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+update.packages()
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+pacman::p_load(pacman, 
+               dplyr,
+               tidyr,
+               magrittr,
+               rio,
+               plm)
+rm(list = ls())
+
+```
+
+```{r import data}
+df <- import(file = "latihan 9.txt")
+str(df)
+GE <- df %>% dplyr::select(Y = Y_GE, X1 = X1_GE, X2 = X2_GE) %>% mutate(kelompok = "GE")
+WE <- df %>% dplyr::select(Y = Y_WE, X1 = X1_WE, X2 = X2_WE) %>% mutate(kelompok = "WE")
+GM <- df %>% dplyr::select(Y = Y_GM, X1 = X1_GM, X2 = X2_GM) %>% mutate(kelompok = "GM")
+DM <- df %>% dplyr::select(Y = Y_DM, X1 = X1_DM, X2 = X2_DM) %>% mutate(kelompok = "DM")
+
+data <- rbind(GE, WE, GM, DM)
+data %<>% mutate(lnY = log(Y), lnX1 = log(X1), lnX2 = log(X2))
+data %<>% dplyr::select(lnY, lnX1, lnX2, kelompok)
+
+Y <- cbind(data$lnY)
+X <- cbind(data$lnX1, data$lnX2)
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+           Set data as Panel Data
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+pdata <- pdata.frame(data, index = "kelompok")
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+             Estimator Method
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+# Pooled OLS
+pooling <- plm(Y ~ X, data = pdata, model = "pooling")
+summary(pooling)
+
+# Between
+between <- plm(Y ~ X, data = pdata, model = "between")
+summary(between)
+
+# First Difference
+firstdiff <- plm(Y ~ X, data = pdata, model = "fd")
+summary(firstdiff)
+
+# Fixed Effect
+fixed <- plm(Y ~ X, data = pdata, model = "within")
+summary(fixed)
+
+# Random Effect
+random <- plm(Y ~ X, data = pdata, model = "random")
+summary(random)
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+          Choose Estimator Method
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+# Random Effect vs. OLS
+plmtest(pooling) # alternative hypothesis: random effect
+
+# Fixed Effect vs. OLS
+pFtest(fixed, pooling) # alternative hypothesis: fixed effect
+
+# Fixed Effect vs. Random Effect
+phtest(random, fixed) # alternative hypothesis: fixed effect
+```
+

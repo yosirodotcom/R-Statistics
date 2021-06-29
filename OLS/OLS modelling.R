@@ -1,4 +1,4 @@
-pacman::p_load(pacman, rio, dplyr, Stat2Data, skimr, broom)
+pacman::p_load(pacman, rio, dplyr, Stat2Data, skimr, broom, systemfit)
 rm(list = ls())
 
 data("FirstYearGPA")
@@ -15,6 +15,9 @@ glance(model1.1)
 model1.2 <- ols_regress(GPA ~ HSGPA, data = df)
 model1.2
 
+model1.3 <- systemfit(GPA ~ HSGPA, data = df, method = "OLS")
+model1.3
+
 # Multiple Regression
 model2.1 <- lm(GPA ~ ., data = df)
 summary(model2.1)
@@ -22,6 +25,9 @@ glance(model2.1)
 
 model2.2 <- ols_regress(GPA ~ HSGPA + SATV + SATM, data = df)
 model2.2
+
+model2.3 <- systemfit(GPA ~ HSGPA + SATV + SATM, data = df, method = "OLS")
+model2.3
 
 # Variable X is a factor
 

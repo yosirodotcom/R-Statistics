@@ -1,0 +1,11 @@
+---
+title: "Deteksi Autokorelasi pada AR"
+author: "yosiro.com"
+date: "28/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+

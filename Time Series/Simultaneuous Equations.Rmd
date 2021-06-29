@@ -1,0 +1,136 @@
+---
+title: "Simultaneous Equation"
+author: "yosiro.com"
+date: "29/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+update.packages()
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+pacman::p_load(pacman, 
+               dplyr,
+               magrittr,
+               rio,
+               systemfit,
+               AER)
+rm(list = ls())
+theme_set(theme_bw())
+```
+
+```{r import data}
+df <- import(file = "latihan 7.txt")
+```
+
+╭══• ೋ•✧๑♡๑✧•ೋ •══╮
+      UJI SIMULTAN
+╰══• ೋ•✧๑♡๑✧•ೋ •══╯
+
+
+```{r Uji simultan Hausman}
+hausman.model.1 <- lm(GDP ~ M2 + I + G, data = df)
+hausman.model.2 <- lm(M2 ~ hausman.model.1$fitted.values + hausman.model.1$residuals + lag(hausman.model.1$fitted.values, 1) + lag(M2, 1), data = df)
+summary(hausman.model.2) 
+```
+
+Null Hyphotesis : Persamaan tidak simultan
+Trigger X_k_residual: pada contoh yang menjadi trigger nya adalah hausman.model.1$residuals di mana signifikan pada taraf 2%. We can reject Null Hyphotesis.
+
+
+╭══• ೋ•✧๑♡๑✧•ೋ •══╮
+     UJI EKSOGENITAS
+╰══• ೋ•✧๑♡๑✧•ೋ •══╯
+
+```{r Uji Eksogenitas}
+eksogenitas.model.1 <- lm(GDP ~ M2 + I + G, data = df)
+eksogenitas.model.2 <- lm(M2 ~ GDP + eksogenitas.model.1$fitted.values + GDP + lag(GDP, 1) + lag(M2, 1), data = df )
+summary(eksogenitas.model.2) 
+```
+
+Null Hyphotesis : Persamaan 1 tidak mengandung unsur variabel eksogenitas, dalam contoh I dan G
+Trigger X_k_fitted.values: pada contoh yang menjadi trigger nya adalah eksogenitas.model.1$fitted.values di mana signifikan pada taraf 0.02%. We can reject Null Hyphotesis.
+
+
+
+https://www.youtube.com/watch?v=s4BdcQA7sv8&t=519s
+
+```{r Uji Eksogenitas dengan Rank Condition}
+model.RC1 <- lm(GDP ~ I + G + lag(GDP, 1) + lag(M2, 1), df)
+summary(model.RC1)
+linearHypothesis(model.RC1, c("lag(GDP, 1) = 0", "lag(M2, 1) = 0"))
+
+model.RC2 <- lm(M2 ~ I + G + lag(GDP, 1) + lag(M2, 1), df)
+summary(model.RC2)
+linearHypothesis(model.RC2, c("I = 0", "G = 0"))
+
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+     Identifikasi dengan Order Condition
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+Rumusnya :
+(K−M)vs (G−1)
+Di mana:
+K : banyaknya keseluruhan variabel (baik variabel endogen atau variabel predetermined)
+M: banyak variabel dalam suatu persamaan yang akan diidentifikasi
+G : jumlah persamaan dalam model simultan
+
+Dengan:
+Jika (K-M) < (G-1) : Tidak teridentifikasi
+Jika (K-M) = (G-1) : Tepat teridentifikasi
+Jika (K-M) > (G-1) : Terlalu teridentifikasi
+
+```{r}
+K <- 3
+M <- 2
+G <- 2
+
+ifelse((K-M) < (G-1), "Unidentified Equation",
+       ifelse((K-M) > (G-1), "Over Identified, Two-Stage Least Square must be applied", "Exactly Identified, Indirect Least Square must be apllied"))
+```
+
+
+
+
+
+```{r Two Stage Least Square}
+
+persamaan.struktural.1 <- GDP ~ M2 + I + G
+persamaan.struktural.2 <- M2 ~ GDP + lag(GDP, 1) + lag(M2, 1)
+inst <- ~ I + G + lag(GDP, 1) + lag(M2, 1)
+
+system <- list(GDP.equation = persamaan.struktural.1,
+               M2.equation = persamaan.struktural.2)
+
+# method 1
+model.persamaan.1.1 <- ivreg(GDP ~ M2 + I + G | I + G + lag(GDP,1) + lag(M2, 1), data = df) # I + G + lag(GDP,1) + lag(M2, 1) adalah variabel eksogen nya
+summary(model.persamaan.1.1)
+
+model.persamaan.2.1 <- ivreg(M2 ~ GDP + lag(GDP, 1) + lag(M2, 1) | I + G + lag(GDP,1) + lag(M2, 1), data = df) 
+summary(model.persamaan.2.1)
+
+# method 2
+two_SLS <- systemfit(system, "2SLS", inst = inst, data = df,
+   methodResidCov = "noDfCor")
+```
+
+```{r 3-SLS}
+three_SLS <- systemfit(system, "3SLS", inst = inst, data = df,
+   methodResidCov = "noDfCor")
+```
+
+╭════• ೋ•✧๑♡๑✧•ೋ •═════╮
+         Uji Hausman
+╰════• ೋ•✧๑♡๑✧•ೋ •═════╯
+
+```{r}
+hausman.systemfit(two_SLS, three_SLS)
+```
+The null hypotheses of the test is that all exogenous variables are uncorrelated with all disturbance terms. Under this hypothesis both the 2SLS and the 3SLS estimator are consistent but only the 3SLS estimator is (asymptotically) efficient. Under the alternative hypothesis the 2SLS estimator is consistent but the 3SLS estimator is inconsistent.
+
+

@@ -1,0 +1,189 @@
+---
+title: "VAR"
+author: "yosiro.com"
+date: "29/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+update.packages()
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+pacman::p_load(pacman, 
+               dplyr,
+               magrittr,
+               rio,
+               vars,
+               urca, 
+               mFilter, 
+               tseries, 
+               forecast, 
+               PerformanceAnalytics, 
+               tsbox,
+               tsDyn)
+rm(list = ls())
+
+```
+
+```{r import data}
+df <- import(file = "latihan 8.2.txt")
+
+namaVar <- as.vector(names(df))
+
+# Membuat objek time series setiap variabel dalam bentuk ln
+for(i in (1:length(namaVar))){
+        assign(namaVar[i], ts(log(df[,i]), start = 1970))
+}
+
+```
+
+```{r}
+chart.ACFplus(GDP)
+chart.ACFplus(GEXP)
+chart.ACFplus(GREV)
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+              Uji Stationary
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+adf.test(GDP)
+ts_plot(GDP)
+adf.test(diff(GDP))
+ts_plot(diff(GDP))
+
+adf.test(GREV)
+ts_plot(GREV)
+adf.test(diff(GREV))
+ts_plot(diff(GREV))
+
+adf.test(GEXP)
+ts_plot(GEXP)
+adf.test(diff(GEXP))
+ts_plot(diff(GEXP))
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+          Lag Selection Criteria
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+tsbind <- cbind(GDP, GREV, GEXP)
+lag_select <- VARselect(tsbind, lag.max = 10, type = "const")
+lag_select$selection
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+                 Model VAR
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+modelVAR1 <- VAR(tsbind, p = 7, type = "const", season = NULL, exog = NULL)
+summary(modelVAR1)
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+                  Testing
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+# Test autokorelasi
+serial.test(modelVAR1, lags.pt = 12, type = "PT.asymptotic")
+
+# Test Heteroskedastisitas
+arch.test(modelVAR1, lags.multi = 12, multivariate.only = TRUE)
+
+# Test Normalitas
+normality.test(modelVAR1, multivariate.only = TRUE)
+
+# Test Structural Breaks in the Residuals
+stabil <- stability(modelVAR1, type = "OLS-CUSUM")
+plot(stabil)
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+                 Kasualitas
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+causality(modelVAR1, cause = "GDP")
+causality(modelVAR1, cause = "GREV")
+causality(modelVAR1, cause = "GEXP")
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+        Impulse response functions
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+# sekedar contoh untuk GDP dan GREV
+impulseresponse <- irf(modelVAR1, impulse = "GDP", response = "GREV", n.ahead = 20, boot = TRUE)
+impulseresponse
+plot(impulseresponse)
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+          Variance Decomposition
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+FEVD <- fevd(modelVAR1, n.ahead = 10)
+plot(FEVD)
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+              VAR Forecasting
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+forecast <- predict(modelVAR1, n.ahead = 4, ci = 0.95)
+fanchart(forecast)
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+                   VECM
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+# Test cointegrasi
+coint.test1 <- ca.jo(tsbind, type = "trace", ecdet = "const", K = 7)
+summary(coint.test1)
+coint.test2 <- ca.jo(tsbind, type = "eigen", ecdet = "const", K = 7)
+summary(coint.test2)
+
+# Build VECM
+model.vecm <- VECM(tsbind, 7, r = 2, estim = ("2OLS"))
+
+# Need to transform VECM to VAR
+model.vecm.to.var <- vec2var(coint.test1, r=2)
+summary(model.vecm.to.var)
+
+# Test autokorelasi
+serial.test(model.vecm.to.var, lags.pt = 7, type = "PT.asymptotic")
+
+# ARCH effects
+arch.test(model.vecm.to.var, lags.multi = 15, multivariate.only = TRUE)
+
+# Normality test
+normality.test(model.vecm.to.var, multivariate.only = T)
+
+#Impulse Response Functions
+irf.model.vecm2var <- irf(model.vecm.to.var, impulse = "GDP", response = "GEXP", n.ahead = 20, boot = TRUE)
+plot(irf.model.vecm2var)
+
+# Variance Decomposition
+
+fevd1 <- fevd(model.vecm.to.var, n.ahead = 10)
+plot(fevd1)
+
+```
+

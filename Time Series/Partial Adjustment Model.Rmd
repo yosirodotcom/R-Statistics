@@ -1,0 +1,41 @@
+---
+title: "Partial Adjustment Model"
+author: "yosiro.com"
+date: "28/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+update.packages()
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+pacman::p_load(pacman, 
+               dplyr,
+               magrittr,
+               rio)
+rm(list = ls())
+theme_set(theme_bw())
+```
+
+
+```{r model}
+df.6.1 <- import(file = "latihan 6.1.xlsx")
+model.6.1 <- lm(log(Y) ~ log(X1)+log(X2)+log(lag(Y, 1)), data = df.6.1)
+summary(model.6.1)
+
+```
+
+```{r}
+teta <- 1 - as.vector(model.6.1$coefficients[4]) # koefisien penyesuaian PAM
+teta
+
+c.j.panjang <- round(as.vector(model.6.1$coefficients[1])/teta,2)
+x1.j.panjang <- round(as.vector(model.6.1$coefficients[2])/teta,2)
+x2.j.panjang <- round(as.vector(model.6.1$coefficients[3])/teta,2)
+
+paste("Model PAM jangka panjang log(Y.panjang) = ","(",as.character(c.j.panjang),")","+","(",as.character(x1.j.panjang),")X1","+","(",as.character(x2.j.panjang),")X2", sep = "")
+```
+

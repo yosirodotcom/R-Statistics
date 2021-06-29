@@ -1,0 +1,42 @@
+---
+title: "Causality"
+author: "yosiro.com"
+date: "29/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+update.packages()
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+pacman::p_load(pacman, 
+               dplyr,
+               magrittr,
+               rio)
+rm(list = ls())
+theme_set(theme_bw())
+```
+
+```{r import data}
+df <- import(file = "latihan 6.2.txt")
+```
+
+```{r analyzing causality}
+model <- lm(Y ~ X, data = df)
+
+grangertest(df$Y ~ df$X, order = 1) #H0: IV tidak menyebabkan DV
+grangertest(df$X ~ df$Y, order = 1)
+
+grangertest(df$Y ~ df$X, order = 2) 
+grangertest(df$X ~ df$Y, order = 2)
+
+grangertest(df$Y ~ df$X, order = 3) 
+grangertest(df$X ~ df$Y, order = 3)
+
+grangertest(df$Y ~ df$X, order = 4) 
+grangertest(df$X ~ df$Y, order = 4)
+```
+

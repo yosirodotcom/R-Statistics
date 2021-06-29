@@ -1,0 +1,111 @@
+---
+title: "ECM"
+author: "yosiro.com"
+date: "29/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r load packages}
+update.packages()
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+pacman::p_load(pacman, 
+               dplyr,
+               magrittr,
+               rio,
+               tseries,
+               tsbox,
+               urca)
+rm(list = ls())
+
+```
+
+```{r import data}
+df <- import(file = "latihan 8.1.txt")
+
+qch.ts <- ts(log(df$qch), start = 1970, end = 1999, frequency = 4)
+pch.ts <- ts(log(df$pch), start = 1970, end = 1999, frequency = 4)
+pb.ts <- ts(log(df$pb), start = 1970, end = 1999, frequency = 4)
+GDPC.ts <- ts(log(df$GDPC), start = 1970, end = 1999, frequency = 4)
+df.ts <- cbind(qch.ts, pch.ts, pb.ts, GDPC.ts)
+
+L.qch <- log(df$qch)
+L.pch <- log(df$pch)
+L.pb <- log(df$pb)
+L.GDPC <- log(df$GDPC)
+ln.df <- cbind(L.qch, L.pch, L.pb, L.GDPC)
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+          Lag Selection Criteria
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+lagselect <- VARselect(df.ts)
+lagselect$selection 
+
+chart.ACFplus(df.ts)
+chart.ACFplus(as.ts(ln.df))
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+              Uji Stationary
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+
+```{r dengan metode grafik}
+ts_plot(qch.ts) # pada level
+ts_plot(diff(qch.ts)) # pada first difference
+ts_plot(pch.ts)
+ts_plot(diff(pch.ts))
+ts_plot(pb.ts)
+ts_plot(diff(pb.ts))
+ts_plot(GDPC.ts)
+ts_plot(diff(GDPC.ts))
+```
+
+```{r dengan uji ADF}
+#variabel qch
+adf.test(L.qch) # pada level
+adf.test(diff(L.qch)) # pada first difference
+# variabel pch 
+adf.test(L.pch)
+adf.test(diff(L.pch))
+# variabel pb
+adf.test(L.pb)
+adf.test(diff(L.pb))
+## variabel GDPC
+adf.test(L.GDPC)
+adf.test(diff(L.GDPC))
+```
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+              Uji Kointegrasi
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+cointegrasi1 <- ca.jo(df.ts, type = "trace", ecdet = "const", K = 4)
+summary(cointegrasi1)
+
+cointegrasi2 <- ca.jo(df.ts, type = "eigen", ecdet = "const", K = 4)
+summary(cointegrasi2)
+```
+
+
+╭═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╮
+                Model ECM
+╰═══════════• ೋ•✧๑♡๑✧•ೋ •═════════════╯
+
+```{r}
+model.log <- lm(L.qch ~ L.pch+L.pb+L.GDPC)
+ect <- resid(model.log)
+ect.lag <- stats::lag(ect,1)
+
+
+model.ecm <- lm(diff(L.qch) ~ diff(L.pch)+diff(L.pb)+diff(L.GDPC)+ect.lag[-1])
+summary(model.ecm)
+
+```
+

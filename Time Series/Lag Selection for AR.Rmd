@@ -1,0 +1,139 @@
+---
+title: "Lag Selection for AR"
+author: "yosiro.com"
+date: "28/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+update.packages()
+pacman::p_load(pacman, 
+               dplyr,
+               ggplot2,
+               magrittr, 
+               AER,
+               dynlm,
+               stargazer,
+               scales,
+               quantmod,
+               urca,
+               readxl,
+               forecast,
+               zoo)
+rm(list = ls())
+theme_set(theme_bw())
+```
+
+```{r LOAD DATA, echo=FALSE}
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+# subset data
+
+# load US macroeconomic data
+USMacroSWQ <- read_xlsx("us_macro_quarterly.xlsx",
+                        sheet = 1,
+                        col_types = c("text", rep("numeric", 9)))
+
+# format date column
+USMacroSWQ$...1 <- as.yearqtr(USMacroSWQ$...1, format = "%Y:0%q")
+
+# adjust column names
+colnames(USMacroSWQ) <- c("Date", "GDPC96", "JAPAN_IP", "PCECTPI",
+                          "GS10", "GS1", "TB3MS", "UNRATE", "EXUSUK", "CPIAUCSL")
+
+
+
+# GDP series as xts object
+GDP <- xts(USMacroSWQ$GDPC96, USMacroSWQ$Date)["1960::2013"]
+
+# GDP growth series as xts object
+
+GDPGrowth <- xts(400 * log(GDP/stats::lag(GDP)))
+
+GDPGRSub <- GDPGrowth["1962::2012"]
+
+N <-length(GDPGRSub)
+
+GDPGR_level <- as.numeric(GDPGRSub[-1])
+GDPGR_lags <- as.numeric(GDPGRSub[-N])
+
+```
+
+Ada 3 cara penentuan lag untuk model AR yang sering digunakan, yaitu AIC, BIC, dan F-test. Tapi kali ini kita hanya menggunakan model BIC.
+
+```{r pembuatan fungsi}
+# compute BIC for AR model objects of class 'dynlm'
+BIC <- function(model) {
+  
+  ssr <- sum(model$residuals^2)
+  t <- length(model$residuals)
+  npar <- length(model$coef)
+  
+  return(
+    round(c("p" = npar - 1,
+          "BIC" = log(ssr/t) + npar * log(t)/t,
+          "R2" = summary(model)$r.squared), 4)
+  )
+}
+```
+
+```{r}
+# loop BIC over models of different orders
+order <- 1:6
+
+BICs <- sapply(order, function(x) 
+        "AR" = BIC(dynlm(ts(GDPGR_level) ~ L(ts(GDPGR_level), 1:x))))
+
+BICs
+```
+
+```{r}
+# select the AR model with the smallest BIC
+BICs[, which.min(BICs[2, ])]
+```
+Model dengan lag 2 adalah yang terbaik.
+
+Kemudian kita juga bisa menentukan panjang lag pada multiple predictors. Contohnya sebagai berikut.
+
+```{r}
+# loop 'BIC()' over multiple ADL models 
+
+# 3-months Treasury bills interest rate
+TB3MS <- xts(USMacroSWQ$TB3MS, USMacroSWQ$Date)["1960::2012"] # short run
+
+# 10-years Treasury bonds interest rate
+TB10YS <- xts(USMacroSWQ$GS10, USMacroSWQ$Date)["1960::2012"] # long run
+
+# term spread
+TSpread <- TB10YS - TB3MS
+
+GDPGrowth_ts <- ts(GDPGrowth, 
+                  start = c(1960, 1), 
+                  end = c(2013, 4), 
+                  frequency = 4)
+
+TSpread_ts <- ts(TSpread, 
+                start = c(1960, 1), 
+                end = c(2012, 4), 
+                frequency = 4)
+order <- 1:12
+
+BICs <- sapply(order, function(x) 
+         BIC(dynlm(GDPGrowth_ts ~ L(GDPGrowth_ts, 1:x) + L(TSpread_ts, 1:x), 
+                   start = c(1962, 1), end = c(2012, 4))))
+
+BICs
+```
+
+```{r Penentuan model yang tepat}
+# select the ADL model with the smallest BIC
+BICs[, which.min(BICs[2, ])]
+```
+
+Model 4 maksudnya adalah model ADL(2,2): Y dengan 2 lag, dan X dengan 2 lag. Itulah model yang terbaik.
+
+
+

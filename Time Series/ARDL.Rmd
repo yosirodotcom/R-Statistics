@@ -1,0 +1,295 @@
+---
+title: "ARDL"
+author: "yosiro.com"
+date: "28/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+update.packages()
+pacman::p_load(pacman, 
+               dplyr,
+               ggplot2,
+               magrittr, 
+               AER,
+               dynlm,
+               stargazer,
+               scales,
+               quantmod,
+               urca,
+               readxl,
+               forecast,
+               zoo)
+rm(list = ls())
+theme_set(theme_bw())
+```
+
+
+
+```{r LOAD DATA, echo=FALSE}
+setwd("D:/Cloud Data/Dropbox/R Programming/R-Statistics/Time Series")
+# subset data
+
+# load US macroeconomic data
+USMacroSWQ <- read_xlsx("us_macro_quarterly.xlsx",
+                        sheet = 1,
+                        col_types = c("text", rep("numeric", 9)))
+
+# format date column
+USMacroSWQ$...1 <- as.yearqtr(USMacroSWQ$...1, format = "%Y:0%q")
+
+# adjust column names
+colnames(USMacroSWQ) <- c("Date", "GDPC96", "JAPAN_IP", "PCECTPI",
+                          "GS10", "GS1", "TB3MS", "UNRATE", "EXUSUK", "CPIAUCSL")
+
+
+
+# GDP series as xts object
+GDP <- xts(USMacroSWQ$GDPC96, USMacroSWQ$Date)["1960::2013"]
+
+# GDP growth series as xts object
+
+GDPGrowth <- xts(400 * log(GDP/stats::lag(GDP)))
+
+GDPGRSub <- GDPGrowth["1962::2012"]
+```
+
+Suku bunga pada jangka panjang dan jangka pendek memiliki kecenderungan yang sama jika diukur pada jangka waktu panjang, namun pada jangka pendek, perilaku suku bunga tersebut agak berbeda. Selisih antara kedua jenis suku bunga tersebut disebut term spread.
+
+```{r}
+# 3-months Treasury bills interest rate
+TB3MS <- xts(USMacroSWQ$TB3MS, USMacroSWQ$Date)["1960::2012"] # short run
+
+# 10-years Treasury bonds interest rate
+TB10YS <- xts(USMacroSWQ$GS10, USMacroSWQ$Date)["1960::2012"] # long run
+
+# term spread
+TSpread <- TB10YS - TB3MS
+```
+
+Lihat perbedaannya melalui chart:
+```{r}
+# reproduce Figure 14.2 (a) of the book
+plot(merge(as.zoo(TB3MS), as.zoo(TB10YS)), 
+     plot.type = "single", 
+     col = c("darkred", "steelblue"),
+     lwd = 2,
+     xlab = "Date",
+     ylab = "Percent per annum",
+     main = "Interest Rates")
+```
+
+Ubah terlebih dahulu Tahun menjadi bentuk quarterly atau per 3 tahun. Kemudian diketahui tahun-tahun yang mengalami resesi ekonomi.
+
+```{r}
+# define function that transform years to class 'yearqtr'
+YToYQTR <- function(years) {
+  return(
+      sort(as.yearqtr(sapply(years, paste, c("Q1", "Q2", "Q3", "Q4"))))
+  )
+}
+
+# recessions
+recessions <- YToYQTR(c(1961:1962, 1970, 1974:1975, 1980:1982, 1990:1991, 2001, 2007:2008))
+```
+
+Kita beri tanda dimana untuk tahun-tahun resesi tersebut sehingga bisa dilihat apa yang terjadi pada 2 jenis suku bunga di atas.
+
+```{r}
+tb3ms.x <- time(as.zoo(TB3MS))
+tb3ms.y <- c(time(TB3MS) %in% recessions)
+
+plot(merge(as.zoo(TB3MS), as.zoo(TB10YS)), 
+     plot.type = "single", 
+     col = c("darkred", "steelblue"),
+     lwd = 2,
+     xlab = "Date",
+     ylab = "Percent per annum",
+     main = "Interest Rates")
+
+# add color shading for recessions
+xblocks(tb3ms.x, 
+        tb3ms.y, 
+        col = alpha("steelblue", alpha = 0.3))
+
+# add a legend
+legend("topright", 
+       legend = c("TB3MS", "TB10YS"),
+       col = c("darkred", "steelblue"),
+       lwd = c(2, 2))
+```
+Terlihat pada grafik di atas bahwa sebelum terjadinya resesi, kedua garis berhimpitan. Kemudian terjadi resesi yang membuat kedua grafik terjadi gap.
+
+Kemudian kita plot TSpread
+
+```{r}
+# reproduce Figure 14.2 (b) of the book
+plot(as.zoo(TSpread), 
+     col = "steelblue",
+     lwd = 2,
+     xlab = "Date",
+     ylab = "Percent per annum",
+     main = "Term Spread")
+
+# add color shading for recessions
+xblocks(time(as.zoo(TB3MS)), 
+        c(time(TB3MS) %in% recessions), 
+        col = alpha("steelblue", alpha = 0.3))
+```
+
+Terlihat bahwa sebelum terjadi resesi, selisih angka pada kurva jangk panjang dan jangka pendeknye cenderung 0 bahkan negatif, tetapi ketika terjadi resesi, selisih angka tersebut meningkat.
+
+Informasi ini akan kita gunakan untuk memprediksi GDP.
+
+Model yang akan kita gunakan adalah untuk mencari hubungan apakah lag dari GDP (lag 1 dan lag 2) bersama-sama dengan nilai selisih suku bunga pada jangka panjang dan jangka pendek mempengaruhi pertumbuhan GDP. Atau bisa ditulis ADL(2,1)
+
+```{r}
+# convert growth and spread series to ts objects
+GDPGrowth_ts <- ts(GDPGrowth, 
+                  start = c(1960, 1), 
+                  end = c(2013, 4), 
+                  frequency = 4)
+
+TSpread_ts <- ts(TSpread, 
+                start = c(1960, 1), 
+                end = c(2012, 4), 
+                frequency = 4)
+
+# join both ts objects
+ADLdata <- ts.union(GDPGrowth_ts, TSpread_ts)
+
+# estimate the ADL(2,1) model of GDP growth -> ADL(2,1), 2 lag pada Y, 1 lag pada X
+GDPGR_ADL21 <- dynlm(GDPGrowth_ts ~ L(GDPGrowth_ts) + L(GDPGrowth_ts, 2) + L(TSpread_ts), 
+      start = c(1962, 1), end = c(2012, 4))
+
+coeftest(GDPGR_ADL21, vcov. = sandwich)
+```
+
+Semua koefisien sigifikan pada level 5%. Artinya semua variabel X mempengaruhi variabel Y.
+
+Untuk membuktikannya, kita pilih salah satu data yaitu pada 2003 Quartal 1. 
+```{r}
+# 2012:Q3 / 2012:Q4 data on GDP growth and term spread
+subset <- window(ADLdata, c(2012, 3), c(2012, 4)) # karena kita ingin memprediksi pada 2013,1 maka kita gunakan 2 data pendukung pada 2 quartal ke belakang.
+
+# ADL(2,1) GDP growth forecast for 2013:Q1
+ADL21_forecast <- coef(GDPGR_ADL21) %*% c(1, subset[2, 1], subset[1, 1], subset[2, 2])
+ADL21_forecast
+
+```
+Prediksi angka GDP untuk tahun 2013 Q1, adalah naik 2.24%.
+
+
+Kemudian kita periksa, berapa persen error pada nilai aktual tahun 2013 kuartal 1 terhadap prediksi yang kita hitung yaitu sebesar 2.24%
+
+```{r}
+# compute the forecast error
+window(GDPGrowth_ts, c(2013, 1), c(2013, 1)) - ADL21_forecast
+```
+Error nya sebesar -1.1%
+
+Kemudian, kita bisa mencoba model yang lain untuk melihat apakah ada peningkatan keakuratan prediksi yang telah kita lakukan di atas. Yaitu dengan model ADL(2,2).
+
+```{r}
+# estimate the ADL(2,2) model of GDP growth
+GDPGR_ADL22 <- dynlm(GDPGrowth_ts ~ L(GDPGrowth_ts) + L(GDPGrowth_ts, 2) 
+                     + L(TSpread_ts) + L(TSpread_ts, 2), 
+                     start = c(1962, 1), end = c(2012, 4))
+
+coeftest(GDPGR_ADL22, vcov. = sandwich)
+```
+
+Terlihat jelas, kedua koefisien lag dari TSpread, tidak signifikan bada taraf 10%. Kemudian dengan model ini kita forecast kembali nilai GDP pada Q1.
+
+```{r}
+# ADL(2,2) GDP growth forecast for 2013:Q1
+ADL22_forecast <- coef(GDPGR_ADL22) %*% c(1, subset[2, 1], subset[1, 1], subset[2, 2], subset[1, 2])
+ADL22_forecast
+```
+
+Dan kita hitung errornya.
+
+```{r}
+# compute the forecast error
+window(GDPGrowth_ts, c(2013, 1), c(2013, 1)) - ADL22_forecast
+```
+
+Mari kita bandingkan hasilnya.
+
+Model pertama ADL(2,1):
+GDP : 2.241689
+Error : -1.102487
+
+Model kedua ADL(2,2):
+GDP : 2.274407
+Error : -1.135206
+
+Model mana yang lebih baik, mari kita test. Pada pembahasan AR, kita telah membuat model yang menggunakan data yang sama, yaitu model AR(2).
+
+```{r}
+# AR(2) model
+N <-length(GDPGRSub)
+GDPGR_level <- as.numeric(GDPGRSub[-1])
+GDPGR_lags <- as.numeric(GDPGRSub[-N])
+GDPGR_AR2 <- dynlm(ts(GDPGR_level) ~ L(ts(GDPGR_level)) + L(ts(GDPGR_level), 2))
+
+
+# compare adj. R2
+c("Adj.R2 AR(2)" = summary(GDPGR_AR2)$r.squared,
+  "Adj.R2 ADL(2,1)" = summary(GDPGR_ADL21)$r.squared,
+  "Adj.R2 ADL(2,2)" = summary(GDPGR_ADL22)$r.squared)
+```
+
+Terlihat model ketiga ADL(2,2) yang memiliki nilai terbesar, maka model ketiga yang lebih baik.
+
+```{r}
+# compare SER
+c("SER AR(2)" = summary(GDPGR_AR2)$sigma,
+  "SER ADL(2,1)" = summary(GDPGR_ADL21)$sigma,
+  "SER ADL(2,2)" = summary(GDPGR_ADL22)$sigma)
+```
+
+Perbandingan Standar Error Residualnya pun model 3 yang terkecil. Karena semakin kecil nilai SER ini maka data akan semakin mendekat ke garis regresi dan tentu saja semakin baik.
+
+```{r}
+# F-test on coefficients of term spread
+linearHypothesis(GDPGR_ADL22, 
+                 c("L(TSpread_ts)=0", "L(TSpread_ts, 2)=0"),
+                 vcov. = sandwich)
+```
+
+Uji di atas adalah uji kelayakan model pada model 3 (ADL(2,2)) di mana hasilnya signifikan pada 5%. Model 3 adalah layak.
+
+
+Untuk model AR, kita juga bisa menggunakan fungsi arima dan forecasting secara visual.
+
+```{r}
+# set seed
+set.seed(1234)
+
+# simulate the time series
+Y <- arima.sim(list(order = c(2, 0, 0), ar = c(0.2, 0.2)),  n = 200)
+class(Y)
+
+# estimate an AR(2) model using 'arima()', see ?arima
+model <- arima(Y, order = c(2, 0, 0))
+model
+```
+
+```{r}
+# compute points forecasts and prediction intervals for the next 25 periods
+fc <- forecast(model, h = 25, level = seq(5, 99, 10))
+
+# plot a fan chart
+plot(fc, 
+     main = "Forecast Fan Chart for AR(2) Model of Simulated Data", 
+     showgap = F, 
+     fcol = "red",
+     flty = 2)
+```
+
