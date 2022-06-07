@@ -1,0 +1,132 @@
+---
+title: "modul_9_antrian"
+output: html_document
+date: '2022-06-07'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(dplyr, magrittr)
+```
+
+```{r}
+MM1 <- function(lambda=1, mu=1){
+        p <- lambda/mu
+        L <- lambda/(mu-lambda)
+        Lq <- (lambda^2)/(mu*(mu-lambda))
+        W <- 1/(mu-lambda)
+        Wq <- lambda/(mu*(mu-lambda))
+        Pn <- (p^0)*(1-p)
+        for(i in 1:L){
+                x <- (p^i)*(1-p)
+                Pn <- Pn + x
+        }
+        
+        df <- data.frame(Notasi = c(
+                "p",
+                "q",
+                "L atau n",
+                "Lq",
+                "W",
+                "Wq",
+                "Pn"
+        ),
+                         Keterangan = c(
+                "Tingkat intensitas fasilitas pelanggan",
+                "Waktu iddle",
+                "Jumlah rata-rata pelanggan yang diharapkan dalam sistem",
+                "Jumlah pelanggan yang diharapakan menunggu dalam antrian",
+                "Waktu yang diharapkan oleh pelanggan selama menunggu dalam antrian",
+                "Waktu yang diharapkan pelanggan selama menunggu dalam antrian",
+                "Probabilitas kepastian n pelanggan dalam sistem."
+        ),
+        Nilai = c(
+                p,
+                1-p,
+                L,
+                Lq,
+                W,
+                Wq,
+                Pn
+        ))
+        df
+}
+
+
+```
+```{r}
+MM1(lambda=20, mu=25)
+```
+
+```{r}
+MMn <- function(lambda=1, mu=1, s=4, n=5){
+        p <- lambda/(mu*s)
+        p0 <- 0
+        
+        for(i in 1:s-1){
+                x <- (lambda/mu)^i/factorial(i)
+                p0 <- p0+x
+        }
+        p0 <- (p0 + ((lambda/mu)^s/factorial(s))*(1/(1-(lambda/(s*mu)))))^(-1)
+        Lq <- (p0*((lambda/mu)^s)*p)/(factorial(s)*((1-p)^2))
+        Wq <- Lq/lambda
+        W <- Wq + (1/mu)
+        L <- lambda*W
+        
+        
+        Pn <- 0
+        if(n>s){
+                for(i in 1:s-1){
+                x <- p0*(((lambda/mu)^i)/factorial(i))
+                print(paste("p",i," =",x))
+                Pn <- Pn + x
+                }
+        }
+        
+        if(n>=s){
+                for(i in s:n){
+                        x <- p0*(((lambda/mu)^i)/(factorial(s)*s^(i-s)))
+                        print(paste("p",i," =",x))
+                        Pn <- Pn + x
+                }
+                
+        }
+        
+        print("Kesimpulan")
+        cat("Jika pelanggan berada dalam sistem selama ", round(W*60,2), " menit, maka ", round(Pn*100,2), "% dari waktu tersebut ", "pelanggan berada dalam ruang tunggu, dan ", round((1-Pn)*100,2), "% atau ", round((W/(1-Pn)),3), " menit pelanggan berada di luar ruangan tunggu", sep="")
+        
+        Notasi <- c(
+                "p",
+                "p0",
+                "W",
+                "Lq",
+                "Wq",
+                "Pn",
+                "1-Pn")
+        Keterangan = c(
+                "Tingkat intensitas fasilitas pelanggan",
+                "Prosentase waktu pelanggan tidak dalam sistem",
+                "Lama rata-rata pelanggan menghabiskan waktunya di sistem",
+                "Lama rata-rata pelanggan menunggu untuk mendapatkan pelayanan",
+                "Lama rata-rata pelanggan menunggu dalam garis antrian",
+                "Berapa lama pelanggan berada di dalam ruangan tunggu",
+                "Berapa lama pelanggan berada di luar ruangan tunggu")
+        
+        Nilai = c(
+                p,
+                p0,
+                W,
+                Lq,
+                Wq,
+                Pn,
+                1-Pn)
+        
+        df <- data.frame(Notasi, Keterangan, Nilai)
+        df
+}
+```
+
+```{r}
+MMn(lambda=100, mu=40, s=4, n=5)
+```
+
